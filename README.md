@@ -115,11 +115,14 @@ screentime/
 
 ## Privacy & Security
 
-- ✅ **All data stored locally** - Nothing sent to external servers
-- ✅ **No user tracking** - Extension only tracks time, not content
-- ✅ **No network requests** - Completely offline operation
-- ✅ **Open source** - Full code visibility
-- ✅ **Minimal permissions** - Only requests necessary permissions
+🔒 **Your privacy is our top priority. Your data never leaves your device.**
+
+- ✅ **100% Local Storage** - All browsing data stays on your computer only
+- ✅ **Zero Data Sharing** - Nothing is ever sent to external servers or third parties
+- ✅ **No User Tracking** - Extension only tracks time, not browsing content or personal data
+- ✅ **Completely Offline** - No network requests or internet connectivity required
+- ✅ **Open Source** - Full code visibility for complete transparency
+- ✅ **Minimal Permissions** - Only requests essential permissions for functionality
 
 ## Permissions Explained
 

@@ -19,19 +19,21 @@ class OptionsPage {
         this.noLimitsMessage = document.getElementById('noLimitsMessage');
 
         // Data management elements
+        this.dataManagementHeader = document.getElementById('dataManagementHeader');
+        this.dataManagementContent = document.getElementById('dataManagementContent');
+        this.dataManagementToggle = document.getElementById('dataManagementToggle');
         this.retentionSlider = document.getElementById('retentionSlider');
         this.retentionSliderValue = document.getElementById('retentionSliderValue');
         this.exportStartDate = document.getElementById('exportStartDate');
         this.exportEndDate = document.getElementById('exportEndDate');
         this.exportDataBtn = document.getElementById('exportDataBtn');
-        this.cleanupDataBtn = document.getElementById('cleanupDataBtn');
+        // this.cleanupDataBtn = document.getElementById('cleanupDataBtn'); // Removed
         this.clearAllDataBtn = document.getElementById('clearAllDataBtn');
 
         this.saveBtn = document.getElementById('saveBtn');
         this.testBtn = document.getElementById('testBtn');
         this.savedMessage = document.getElementById('savedMessage');
         this.currentStatus = document.getElementById('currentStatus');
-        this.activeTab = document.getElementById('activeTab');
 
         // Stats elements
         this.currentDateElement = document.getElementById('currentDate');
@@ -164,16 +166,16 @@ class OptionsPage {
         });
 
         // Data management
+        this.dataManagementHeader.addEventListener('click', () => {
+            this.toggleDataManagement();
+        });
+
         this.retentionSlider.addEventListener('input', () => {
             this.updateRetentionSliderValue();
         });
 
         this.exportDataBtn.addEventListener('click', () => {
             this.exportData();
-        });
-
-        this.cleanupDataBtn.addEventListener('click', () => {
-            this.cleanupOldData();
         });
 
         this.clearAllDataBtn.addEventListener('click', () => {
@@ -287,22 +289,10 @@ class OptionsPage {
                     'Disabled';
                 this.currentStatus.textContent = statusText;
 
-                // Update active tab info
-                if (response.currentTab) {
-                    try {
-                        const tab = await chrome.tabs.get(response.currentTab);
-                        const domain = this.extractDomain(tab.url);
-                        this.activeTab.textContent = domain || 'Unknown';
-                    } catch (error) {
-                        this.activeTab.textContent = 'None';
-                    }
-                } else {
-                    this.activeTab.textContent = 'None';
-                }
+                // Active tab info removed for privacy
             }
         } catch (error) {
             this.currentStatus.textContent = 'Error loading status';
-            this.activeTab.textContent = 'Error';
         }
     }
 
@@ -515,7 +505,17 @@ class OptionsPage {
         this.noHourlyDataElement.textContent = message;
     }
 
-    // Time limits methods
+    // Data management methods
+    toggleDataManagement() {
+        if (this.dataManagementContent.style.display === 'none') {
+            this.dataManagementContent.style.display = 'block';
+            this.dataManagementToggle.style.transform = 'rotate(180deg)';
+        } else {
+            this.dataManagementContent.style.display = 'none';
+            this.dataManagementToggle.style.transform = 'rotate(0deg)';
+        }
+    }
+
     updateRetentionSliderValue() {
         const days = parseInt(this.retentionSlider.value);
         this.retentionSliderValue.textContent = `${days} day${days !== 1 ? 's' : ''}`;
@@ -637,32 +637,7 @@ class OptionsPage {
         }
     }
 
-    async cleanupOldData() {
-        try {
-            this.cleanupDataBtn.disabled = true;
-            this.cleanupDataBtn.textContent = '⏳ Cleaning...';
-
-            const response = await chrome.runtime.sendMessage({
-                action: 'updateDataSettings',
-                dataRetentionDays: parseInt(this.retentionSlider.value),
-                cleanupOldData: true
-            });
-
-            if (response.success) {
-                this.showTemporaryMessage('Old data cleaned up successfully!');
-                // Refresh stats display
-                await this.loadStats();
-            } else {
-                this.showTemporaryMessage('Error cleaning up data');
-            }
-        } catch (error) {
-            console.error('Error cleaning up data:', error);
-            this.showTemporaryMessage('Error cleaning up data');
-        } finally {
-            this.cleanupDataBtn.disabled = false;
-            this.cleanupDataBtn.textContent = '🧹 Clean Old Data';
-        }
-    }
+    // cleanupOldData method removed - functionality moved to automatic cleanup
 
     async clearAllData() {
         if (!confirm('Are you sure you want to clear ALL browsing data? This action cannot be undone.')) {

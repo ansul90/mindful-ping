@@ -23,7 +23,7 @@
         }
 
         .container {
-            max-width: 600px;
+            max-width: 900px;
             width: 100%;
             margin: 0 auto;
             background: rgba(255, 255, 255, 0.05);
@@ -360,6 +360,7 @@
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-bottom: 20px;
+            overflow: hidden;
         }
 
         .stats-card {
@@ -367,6 +368,8 @@
             border-radius: 15px;
             padding: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
+            min-width: 0;
+            overflow: hidden;
         }
 
         .stats-card h3 {
@@ -476,6 +479,11 @@
         }
 
         @media (max-width: 768px) {
+            .container {
+                max-width: 100%;
+                padding: 20px;
+            }
+
             .stats-container {
                 grid-template-columns: 1fr;
             }
@@ -483,6 +491,11 @@
             .stats-header {
                 flex-direction: column;
                 text-align: center;
+            }
+
+            .date-selector {
+                flex-direction: column;
+                gap: 10px;
             }
         }
 
@@ -564,6 +577,17 @@
     <div class="container">
         <div class="emoji">⚙️</div>
         <h1>Mindful Ping Settings</h1>
+
+        <div class="privacy-notice">
+            <div
+                style="text-align: center; padding: 20px; background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 12px; margin-bottom: 30px;">
+                <div style="font-size: 20px; margin-bottom: 8px;">🔒</div>
+                <div style="font-weight: 600; margin-bottom: 8px; color: #4CAF50;">Your Privacy is Protected</div>
+                <div style="font-size: 14px; color: rgba(255, 255, 255, 0.8);">
+                    All your browsing data stays completely private on your device. Nothing is shared with anyone, ever.
+                </div>
+            </div>
+        </div>
 
         <div class="section">
             <h2>📊 Tab-Based Notifications</h2>
@@ -666,49 +690,58 @@
         </div>
 
         <div class="section">
-            <h2>🗄️ Data Management</h2>
-            <div class="setting-group">
-                <label class="setting-label">Data retention period:</label>
-                <div class="slider-container">
-                    <div class="slider-value" id="retentionSliderValue">30 days</div>
-                    <input type="range" min="7" max="365" value="30" class="slider" id="retentionSlider">
-                    <div class="slider-labels">
-                        <span>7 days</span>
-                        <span>90 days</span>
-                        <span>180 days</span>
-                        <span>365 days</span>
-                    </div>
-                </div>
-            </div>
-            <div class="info-text">
-                Automatically delete browsing data older than this period. Reduces storage usage.
+            <h2 id="dataManagementHeader"
+                style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
+                🗄️ Data Management
+                <span id="dataManagementToggle" style="font-size: 16px; transition: transform 0.3s ease;">▼</span>
+            </h2>
+            <div class="info-text" style="margin-bottom: 20px;">
+                Manage your browsing data, export statistics, and control data retention.
             </div>
 
-            <div style="margin-top: 25px;">
+            <div id="dataManagementContent" style="display: none;">
                 <div class="setting-group">
-                    <label class="setting-label">Export data to CSV:</label>
-                    <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center; flex-wrap: wrap;">
-                        <input type="date" id="exportStartDate"
-                            style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white;">
-                        <span style="color: rgba(255,255,255,0.7);">to</span>
-                        <input type="date" id="exportEndDate"
-                            style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white;">
-                        <button id="exportDataBtn" class="button" style="padding: 10px 20px; margin: 0;">📊 Export
-                            CSV</button>
+                    <label class="setting-label">Data retention period:</label>
+                    <div class="slider-container">
+                        <div class="slider-value" id="retentionSliderValue">30 days</div>
+                        <input type="range" min="7" max="365" value="30" class="slider" id="retentionSlider">
+                        <div class="slider-labels">
+                            <span>7 days</span>
+                            <span>90 days</span>
+                            <span>180 days</span>
+                            <span>365 days</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-text">
+                    Automatically delete browsing data older than this period. Reduces storage usage.
+                </div>
+
+                <div style="margin-top: 25px;">
+                    <div class="setting-group">
+                        <label class="setting-label">Export data to CSV:</label>
+                        <div
+                            style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center; flex-wrap: wrap;">
+                            <input type="date" id="exportStartDate"
+                                style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white;">
+                            <span style="color: rgba(255,255,255,0.7);">to</span>
+                            <input type="date" id="exportEndDate"
+                                style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white;">
+                            <button id="exportDataBtn" class="button" style="padding: 10px 20px; margin: 0;">📊 Export
+                                CSV</button>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                        <button id="clearAllDataBtn" class="button"
+                            style="padding: 10px 20px; margin: 0; background: #f44336; border-color: #f44336;">Clear All
+                            Data</button>
                     </div>
                 </div>
 
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
-                    <button id="cleanupDataBtn" class="button" style="padding: 10px 20px; margin: 0;">🧹 Clean Old
-                        Data</button>
-                    <button id="clearAllDataBtn" class="button"
-                        style="padding: 10px 20px; margin: 0; background: #f44336; border-color: #f44336;">🗑️ Clear All
-                        Data</button>
+                <div class="info-text" style="margin-top: 15px;">
+                    Export includes: Date, Website, Time Spent (minutes/seconds), Hourly breakdown, and Session counts.
                 </div>
-            </div>
-
-            <div class="info-text" style="margin-top: 15px;">
-                Export includes: Date, Website, Time Spent (minutes/seconds), Hourly breakdown, and Session counts.
             </div>
         </div>
 
@@ -752,7 +785,6 @@
 
         <div class="status" id="statusInfo">
             <div>Current Status: <span id="currentStatus">Loading...</span></div>
-            <div>Active Tab: <span id="activeTab">None</span></div>
         </div>
     </div>
 

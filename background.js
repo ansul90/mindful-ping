@@ -105,10 +105,12 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
     isWindowFocused = true;
     console.log('Browser window gained focus - resuming tab timing');
     // Get current active tab and resume timing
-    chrome.tabs.query({ active: true, windowId: windowId }, (tabs) => {
+    chrome.tabs.query({ active: true, windowId: windowId }).then((tabs) => {
       if (tabs.length > 0) {
         handleTabSwitch(tabs[0].id);
       }
+    }).catch((error) => {
+      console.log('Could not query active tab on window focus:', error.message);
     });
   }
 });
@@ -118,10 +120,12 @@ function initializeTabTracking() {
   if (!isEnabled) return;
 
   // Get currently active tab
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
     if (tabs.length > 0) {
       handleTabSwitch(tabs[0].id);
     }
+  }).catch((error) => {
+    console.log('Could not query active tab on initialization:', error.message);
   });
 }
 
@@ -152,13 +156,21 @@ function startTimingTab(tabId) {
   }
 
   // Get tab URL for logging
-  chrome.tabs.get(tabId, (tab) => {
+  chrome.tabs.get(tabId).then((tab) => {
     const domain = tab.url ? extractDomain(tab.url) : 'unknown';
     console.log(`Started timing tab ${tabId} (${domain})`);
 
     // Set timer for this tab
     const timerId = setTimeout(() => {
       showNotificationForTab(tabId, domain);
+    }, notificationInterval * 1000);
+
+    tabTimers.set(tabId, timerId);
+  }).catch((error) => {
+    console.log(`Could not get tab ${tabId} info:`, error.message);
+    // Set timer anyway with unknown domain
+    const timerId = setTimeout(() => {
+      showNotificationForTab(tabId, 'unknown');
     }, notificationInterval * 1000);
 
     tabTimers.set(tabId, timerId);
@@ -171,19 +183,17 @@ function stopTimingCurrentTab() {
     clearTimeout(tabTimers.get(currentTabId));
     tabTimers.delete(currentTabId);
 
-    chrome.tabs.get(currentTabId, async (tab) => {
-      if (chrome.runtime.lastError) {
-        console.log(`Stopped timing tab ${currentTabId} (tab closed)`);
-      } else {
-        const domain = tab.url ? extractDomain(tab.url) : 'unknown';
-        const timeSpent = tabStartTime ? Math.round((Date.now() - tabStartTime) / 1000) : 0;
-        console.log(`Stopped timing tab ${currentTabId} (${domain}) after ${timeSpent}s`);
+    chrome.tabs.get(currentTabId).then(async (tab) => {
+      const domain = tab.url ? extractDomain(tab.url) : 'unknown';
+      const timeSpent = tabStartTime ? Math.round((Date.now() - tabStartTime) / 1000) : 0;
+      console.log(`Stopped timing tab ${currentTabId} (${domain}) after ${timeSpent}s`);
 
-        // Save the time spent to storage
-        if (timeSpent > 5) { // Only save if spent more than 5 seconds
-          await saveTimeToStorage(domain, timeSpent);
-        }
+      // Save the time spent to storage
+      if (timeSpent > 5) { // Only save if spent more than 5 seconds
+        await saveTimeToStorage(domain, timeSpent);
       }
+    }).catch((error) => {
+      console.log(`Stopped timing tab ${currentTabId} (tab closed or error: ${error.message})`);
     });
   }
 
@@ -353,9 +363,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'testNotification') {
     if (currentTabId) {
-      chrome.tabs.get(currentTabId, (tab) => {
+      chrome.tabs.get(currentTabId).then((tab) => {
         const domain = tab.url ? extractDomain(tab.url) : 'current tab';
         showNotificationForTab(currentTabId, domain);
+      }).catch((error) => {
+        console.log('Could not get current tab for test notification:', error.message);
+        showNotificationForTab(currentTabId, 'current tab');
       });
     } else {
       // Show generic test notification
@@ -417,13 +430,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
 
     // Update all tabs with new settings
-    chrome.tabs.query({}, (tabs) => {
+    chrome.tabs.query({}).then((tabs) => {
       tabs.forEach(tab => {
         // Only update tabs that can run content scripts (skip chrome://, moz-extension://, etc.)
         if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://') && !tab.url.startsWith('moz-extension://')) {
           updateTabActivitySettings(tab.id);
         }
       });
+    }).catch((error) => {
+      console.log('Could not query tabs to update activity settings:', error.message);
     });
 
     sendResponse({ success: true });
