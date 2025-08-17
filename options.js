@@ -8,6 +8,25 @@ class OptionsPage {
         this.trackInactiveToggle = document.getElementById('trackInactiveToggle');
         this.inactivitySlider = document.getElementById('inactivitySlider');
         this.inactivitySliderValue = document.getElementById('inactivitySliderValue');
+
+        // Time limits elements
+        this.timeLimitToggle = document.getElementById('timeLimitToggle');
+        this.timeLimitsContainer = document.getElementById('timeLimitsContainer');
+        this.limitDomainInput = document.getElementById('limitDomainInput');
+        this.limitMinutesInput = document.getElementById('limitMinutesInput');
+        this.addLimitBtn = document.getElementById('addLimitBtn');
+        this.limitsList = document.getElementById('limitsList');
+        this.noLimitsMessage = document.getElementById('noLimitsMessage');
+
+        // Data management elements
+        this.retentionSlider = document.getElementById('retentionSlider');
+        this.retentionSliderValue = document.getElementById('retentionSliderValue');
+        this.exportStartDate = document.getElementById('exportStartDate');
+        this.exportEndDate = document.getElementById('exportEndDate');
+        this.exportDataBtn = document.getElementById('exportDataBtn');
+        this.cleanupDataBtn = document.getElementById('cleanupDataBtn');
+        this.clearAllDataBtn = document.getElementById('clearAllDataBtn');
+
         this.saveBtn = document.getElementById('saveBtn');
         this.testBtn = document.getElementById('testBtn');
         this.savedMessage = document.getElementById('savedMessage');
@@ -26,6 +45,9 @@ class OptionsPage {
         // Date handling for stats
         this.currentDate = new Date();
         this.currentDate.setHours(0, 0, 0, 0);
+
+        // Time limits data
+        this.dailyTimeLimits = {};
 
         this.init();
     }
@@ -50,7 +72,10 @@ class OptionsPage {
         try {
             // Get settings from background script and storage
             const response = await chrome.runtime.sendMessage({ action: 'getStatus' });
-            const storageResult = await chrome.storage.sync.get(['trackInactiveTime', 'inactivityThreshold']);
+            const storageResult = await chrome.storage.sync.get([
+                'trackInactiveTime', 'inactivityThreshold', 'dailyTimeLimits',
+                'timeLimitEnabled', 'dataRetentionDays'
+            ]);
 
             if (response) {
                 this.enableToggle.checked = response.enabled;
@@ -62,6 +87,25 @@ class OptionsPage {
             this.trackInactiveToggle.checked = storageResult.trackInactiveTime || false;
             this.inactivitySlider.value = storageResult.inactivityThreshold || 5;
             this.updateInactivitySliderValue();
+
+            // Load time limits settings
+            this.timeLimitToggle.checked = storageResult.timeLimitEnabled || false;
+            this.dailyTimeLimits = storageResult.dailyTimeLimits || {};
+            this.updateTimeLimitsDisplay();
+            this.toggleTimeLimitsContainer();
+
+            // Load data management settings
+            this.retentionSlider.value = storageResult.dataRetentionDays || 30;
+            this.updateRetentionSliderValue();
+
+            // Set default export dates (last 30 days)
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 30);
+
+            this.exportEndDate.value = endDate.toISOString().split('T')[0];
+            this.exportStartDate.value = startDate.toISOString().split('T')[0];
+
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -95,6 +139,45 @@ class OptionsPage {
         // Activity toggle
         this.trackInactiveToggle.addEventListener('change', () => {
             this.saveSettings();
+        });
+
+        // Time limits
+        this.timeLimitToggle.addEventListener('change', () => {
+            this.toggleTimeLimitsContainer();
+            this.saveSettings();
+        });
+
+        this.addLimitBtn.addEventListener('click', () => {
+            this.addTimeLimit();
+        });
+
+        this.limitDomainInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.addTimeLimit();
+            }
+        });
+
+        this.limitMinutesInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.addTimeLimit();
+            }
+        });
+
+        // Data management
+        this.retentionSlider.addEventListener('input', () => {
+            this.updateRetentionSliderValue();
+        });
+
+        this.exportDataBtn.addEventListener('click', () => {
+            this.exportData();
+        });
+
+        this.cleanupDataBtn.addEventListener('click', () => {
+            this.cleanupOldData();
+        });
+
+        this.clearAllDataBtn.addEventListener('click', () => {
+            this.clearAllData();
         });
 
         // Stats navigation
@@ -137,6 +220,8 @@ class OptionsPage {
             const enabled = this.enableToggle.checked;
             const trackInactiveTime = this.trackInactiveToggle.checked;
             const inactivityThreshold = parseInt(this.inactivitySlider.value);
+            const timeLimitEnabled = this.timeLimitToggle.checked;
+            const dataRetentionDays = parseInt(this.retentionSlider.value);
 
             // Convert minutes to seconds for background script
             const intervalInSeconds = interval * 60;
@@ -159,10 +244,23 @@ class OptionsPage {
                 inactivityThreshold: inactivityThreshold
             });
 
+            // Save time limits settings
+            await chrome.runtime.sendMessage({
+                action: 'updateTimeLimits',
+                dailyTimeLimits: this.dailyTimeLimits,
+                timeLimitEnabled: timeLimitEnabled
+            });
+
+            // Save data management settings
+            await chrome.runtime.sendMessage({
+                action: 'updateDataSettings',
+                dataRetentionDays: dataRetentionDays
+            });
+
             // Show success message
             this.showSavedMessage();
 
-            console.log(`Settings saved: ${enabled ? 'enabled' : 'disabled'}, interval: ${interval} minutes, trackInactive: ${trackInactiveTime}, threshold: ${inactivityThreshold} minutes`);
+            console.log(`Settings saved: ${enabled ? 'enabled' : 'disabled'}, interval: ${interval} minutes, trackInactive: ${trackInactiveTime}, threshold: ${inactivityThreshold} minutes, timeLimits: ${timeLimitEnabled}, retention: ${dataRetentionDays} days`);
         } catch (error) {
             console.error('Error saving settings:', error);
         }
@@ -416,9 +514,190 @@ class OptionsPage {
         this.noHourlyDataElement.style.display = 'flex';
         this.noHourlyDataElement.textContent = message;
     }
+
+    // Time limits methods
+    updateRetentionSliderValue() {
+        const days = parseInt(this.retentionSlider.value);
+        this.retentionSliderValue.textContent = `${days} day${days !== 1 ? 's' : ''}`;
+    }
+
+    toggleTimeLimitsContainer() {
+        if (this.timeLimitToggle.checked) {
+            this.timeLimitsContainer.style.display = 'block';
+        } else {
+            this.timeLimitsContainer.style.display = 'none';
+        }
+    }
+
+    addTimeLimit() {
+        const domain = this.limitDomainInput.value.trim().toLowerCase();
+        const minutes = parseInt(this.limitMinutesInput.value);
+
+        if (!domain || !minutes || minutes < 1) {
+            this.showTemporaryMessage('Please enter a valid domain and time limit');
+            return;
+        }
+
+        // Clean domain (remove protocol, www, etc.)
+        const cleanDomain = domain.replace(/^(https?:\/\/)?(www\.)?/, '');
+
+        this.dailyTimeLimits[cleanDomain] = minutes;
+        this.updateTimeLimitsDisplay();
+        this.saveSettings();
+
+        // Clear inputs
+        this.limitDomainInput.value = '';
+        this.limitMinutesInput.value = '';
+
+        this.showTemporaryMessage(`Time limit set for ${cleanDomain}: ${minutes} minutes/day`);
+    }
+
+    removeTimeLimit(domain) {
+        delete this.dailyTimeLimits[domain];
+        this.updateTimeLimitsDisplay();
+        this.saveSettings();
+        this.showTemporaryMessage(`Time limit removed for ${domain}`);
+    }
+
+    updateTimeLimitsDisplay() {
+        const domains = Object.keys(this.dailyTimeLimits);
+
+        if (domains.length === 0) {
+            this.noLimitsMessage.style.display = 'block';
+            this.limitsList.innerHTML = '';
+            return;
+        }
+
+        this.noLimitsMessage.style.display = 'none';
+
+        let html = '';
+        domains.sort().forEach(domain => {
+            const minutes = this.dailyTimeLimits[domain];
+            html += `
+                <div class="limit-item">
+                    <div class="limit-info">
+                        <div class="limit-domain">${domain}</div>
+                        <div class="limit-time">${minutes} minute${minutes !== 1 ? 's' : ''} per day</div>
+                    </div>
+                    <button class="limit-remove" onclick="optionsPage.removeTimeLimit('${domain}')">Remove</button>
+                </div>
+            `;
+        });
+
+        this.limitsList.innerHTML = html;
+    }
+
+    // Data management methods
+    async exportData() {
+        try {
+            const startDate = this.exportStartDate.value;
+            const endDate = this.exportEndDate.value;
+
+            if (!startDate || !endDate) {
+                this.showTemporaryMessage('Please select both start and end dates');
+                return;
+            }
+
+            if (new Date(startDate) > new Date(endDate)) {
+                this.showTemporaryMessage('Start date cannot be after end date');
+                return;
+            }
+
+            this.exportDataBtn.disabled = true;
+            this.exportDataBtn.textContent = '⏳ Exporting...';
+
+            const response = await chrome.runtime.sendMessage({
+                action: 'exportData',
+                startDate: startDate,
+                endDate: endDate
+            });
+
+            if (response.success) {
+                // Create and download CSV file
+                const blob = new Blob([response.data], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `mindfulping-data-${startDate}-to-${endDate}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                this.showTemporaryMessage('Data exported successfully!');
+            } else {
+                this.showTemporaryMessage('Error exporting data: ' + response.error);
+            }
+        } catch (error) {
+            console.error('Error exporting data:', error);
+            this.showTemporaryMessage('Error exporting data');
+        } finally {
+            this.exportDataBtn.disabled = false;
+            this.exportDataBtn.textContent = '📊 Export CSV';
+        }
+    }
+
+    async cleanupOldData() {
+        try {
+            this.cleanupDataBtn.disabled = true;
+            this.cleanupDataBtn.textContent = '⏳ Cleaning...';
+
+            const response = await chrome.runtime.sendMessage({
+                action: 'updateDataSettings',
+                dataRetentionDays: parseInt(this.retentionSlider.value),
+                cleanupOldData: true
+            });
+
+            if (response.success) {
+                this.showTemporaryMessage('Old data cleaned up successfully!');
+                // Refresh stats display
+                await this.loadStats();
+            } else {
+                this.showTemporaryMessage('Error cleaning up data');
+            }
+        } catch (error) {
+            console.error('Error cleaning up data:', error);
+            this.showTemporaryMessage('Error cleaning up data');
+        } finally {
+            this.cleanupDataBtn.disabled = false;
+            this.cleanupDataBtn.textContent = '🧹 Clean Old Data';
+        }
+    }
+
+    async clearAllData() {
+        if (!confirm('Are you sure you want to clear ALL browsing data? This action cannot be undone.')) {
+            return;
+        }
+
+        try {
+            this.clearAllDataBtn.disabled = true;
+            this.clearAllDataBtn.textContent = '⏳ Clearing...';
+
+            const response = await chrome.runtime.sendMessage({
+                action: 'clearAllData'
+            });
+
+            if (response.success) {
+                this.showTemporaryMessage('All data cleared successfully!');
+                // Refresh stats display
+                await this.loadStats();
+            } else {
+                this.showTemporaryMessage('Error clearing data');
+            }
+        } catch (error) {
+            console.error('Error clearing data:', error);
+            this.showTemporaryMessage('Error clearing data');
+        } finally {
+            this.clearAllDataBtn.disabled = false;
+            this.clearAllDataBtn.textContent = '🗑️ Clear All Data';
+        }
+    }
 }
+
+// Make optionsPage globally accessible for onclick handlers
+let optionsPage;
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new OptionsPage();
+    optionsPage = new OptionsPage();
 });

@@ -13,17 +13,24 @@ let inactivityThreshold = 5; // Default: 5 minutes
 let tabActivityStatus = new Map(); // Store activity status for each tab
 let pausedTabs = new Set(); // Track which tabs are paused due to inactivity
 
+// Time limits settings
+let dailyTimeLimits = {}; // Store per-website daily limits (in seconds)
+let timeLimitEnabled = false; // Global time limit feature toggle
+let dataRetentionDays = 30; // Default data retention period
+
 // Initialize the extension
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('Mindful Ping extension installed');
 
   // Load saved settings or set defaults
-  const result = await chrome.storage.sync.get(['notificationInterval', 'trackInactiveTime', 'inactivityThreshold']);
+  const result = await chrome.storage.sync.get([
+    'notificationInterval', 'trackInactiveTime', 'inactivityThreshold',
+    'dailyTimeLimits', 'timeLimitEnabled', 'dataRetentionDays'
+  ]);
 
   if (result.notificationInterval) {
     notificationInterval = result.notificationInterval;
   } else {
-    // Set default interval (10 minutes)
     await chrome.storage.sync.set({ notificationInterval: 600 });
   }
 
@@ -37,6 +44,24 @@ chrome.runtime.onInstalled.addListener(async () => {
     inactivityThreshold = result.inactivityThreshold;
   } else {
     await chrome.storage.sync.set({ inactivityThreshold: 5 });
+  }
+
+  if (result.dailyTimeLimits) {
+    dailyTimeLimits = result.dailyTimeLimits;
+  } else {
+    await chrome.storage.sync.set({ dailyTimeLimits: {} });
+  }
+
+  if (result.timeLimitEnabled !== undefined) {
+    timeLimitEnabled = result.timeLimitEnabled;
+  } else {
+    await chrome.storage.sync.set({ timeLimitEnabled: false });
+  }
+
+  if (result.dataRetentionDays) {
+    dataRetentionDays = result.dataRetentionDays;
+  } else {
+    await chrome.storage.sync.set({ dataRetentionDays: 30 });
   }
 
   // Check notification permission
@@ -216,6 +241,14 @@ async function saveTimeToStorage(domain, timeSpent) {
     });
 
     console.log(`Saved ${timeSpent}s for ${domain} (total today: ${todayData[domain]}s)`);
+
+    // Check time limits
+    if (timeLimitEnabled && dailyTimeLimits[domain]) {
+      const limitSeconds = dailyTimeLimits[domain] * 60; // Convert minutes to seconds
+      if (todayData[domain] >= limitSeconds) {
+        showTimeLimitNotification(domain, todayData[domain], limitSeconds);
+      }
+    }
   } catch (error) {
     console.error('Error saving time to storage:', error);
   }
@@ -396,6 +429,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
+
+  if (request.action === 'updateTimeLimits') {
+    dailyTimeLimits = request.dailyTimeLimits;
+    timeLimitEnabled = request.timeLimitEnabled;
+
+    chrome.storage.sync.set({
+      dailyTimeLimits: dailyTimeLimits,
+      timeLimitEnabled: timeLimitEnabled
+    });
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (request.action === 'updateDataSettings') {
+    dataRetentionDays = request.dataRetentionDays;
+
+    chrome.storage.sync.set({
+      dataRetentionDays: dataRetentionDays
+    });
+
+    // Clean up old data if requested
+    if (request.cleanupOldData) {
+      cleanupOldData().then(() => {
+        sendResponse({ success: true });
+      }).catch((error) => {
+        sendResponse({ success: false, error: error.message });
+      });
+      return true;
+    }
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (request.action === 'exportData') {
+    generateExportData(request.startDate, request.endDate).then((exportData) => {
+      sendResponse({ success: true, data: exportData });
+    }).catch((error) => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'clearAllData') {
+    clearAllStoredData().then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
 });
 
 // Handle notification clicks
@@ -532,6 +617,156 @@ function updateTabActivitySettings(tabId) {
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabActivityStatus.delete(tabId);
   pausedTabs.delete(tabId);
+});
+
+// Time limit notification function
+function showTimeLimitNotification(domain, timeSpent, limitSeconds) {
+  const timeSpentMinutes = Math.round(timeSpent / 60);
+  const limitMinutes = Math.round(limitSeconds / 60);
+
+  const notificationId = `time-limit-${domain}-${Date.now()}`;
+
+  chrome.notifications.create(notificationId, {
+    type: 'basic',
+    iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    title: `⏰ Daily Time Limit Reached`,
+    message: `You've spent ${timeSpentMinutes} minutes on ${domain} today (limit: ${limitMinutes} minutes). Consider taking a break! 🌿`
+  });
+
+  // Auto-clear notification after 8 seconds
+  setTimeout(() => {
+    chrome.notifications.clear(notificationId);
+  }, 8000);
+
+  console.log(`Time limit notification shown for ${domain}: ${timeSpentMinutes}/${limitMinutes} minutes`);
+}
+
+// Data cleanup function
+async function cleanupOldData() {
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - dataRetentionDays);
+
+    const allKeys = await chrome.storage.local.get();
+    const keysToDelete = [];
+
+    for (const key in allKeys) {
+      if (key.startsWith('daily_') || key.startsWith('hourly_')) {
+        const dateStr = key.replace(/^(daily_|hourly_)/, '');
+        const keyDate = new Date(dateStr);
+
+        if (keyDate < cutoffDate) {
+          keysToDelete.push(key);
+        }
+      }
+    }
+
+    if (keysToDelete.length > 0) {
+      await chrome.storage.local.remove(keysToDelete);
+      console.log(`Cleaned up ${keysToDelete.length} old data entries`);
+    }
+  } catch (error) {
+    console.error('Error cleaning up old data:', error);
+  }
+}
+
+// Generate export data function
+async function generateExportData(startDate, endDate) {
+  try {
+    const allData = await chrome.storage.local.get();
+    const exportRows = [];
+
+    // Add header row
+    exportRows.push(['Date', 'Website', 'Time Spent (minutes)', 'Time Spent (seconds)', 'Hour', 'Session Count']);
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999); // Include full end date
+
+    // Process daily data
+    for (const key in allData) {
+      if (key.startsWith('daily_')) {
+        const dateStr = key.replace('daily_', '');
+        const dataDate = new Date(dateStr);
+
+        if (dataDate >= start && dataDate <= end) {
+          const dailyData = allData[key];
+          const hourlyKey = `hourly_${dateStr}`;
+          const hourlyData = allData[hourlyKey] || {};
+
+          for (const domain in dailyData) {
+            const totalSeconds = dailyData[domain];
+            const totalMinutes = Math.round(totalSeconds / 60 * 100) / 100; // Round to 2 decimal places
+
+            // Count sessions and get hourly breakdown
+            const domainHourly = hourlyData[domain] || {};
+            const activeHours = Object.keys(domainHourly).length;
+
+            // Add main daily entry
+            exportRows.push([
+              dataDate.toISOString().split('T')[0], // YYYY-MM-DD format
+              domain,
+              totalMinutes,
+              totalSeconds,
+              '', // No specific hour for daily summary
+              activeHours
+            ]);
+
+            // Add hourly breakdown
+            for (const hour in domainHourly) {
+              const hourSeconds = domainHourly[hour];
+              const hourMinutes = Math.round(hourSeconds / 60 * 100) / 100;
+
+              exportRows.push([
+                dataDate.toISOString().split('T')[0],
+                domain,
+                hourMinutes,
+                hourSeconds,
+                `${hour}:00`,
+                1 // Each hour entry represents one session period
+              ]);
+            }
+          }
+        }
+      }
+    }
+
+    // Convert to CSV format
+    const csvContent = exportRows.map(row =>
+      row.map(field => {
+        // Escape quotes and wrap in quotes if contains comma, quote, or newline
+        const stringField = String(field);
+        if (stringField.includes(',') || stringField.includes('"') || stringField.includes('\n')) {
+          return '"' + stringField.replace(/"/g, '""') + '"';
+        }
+        return stringField;
+      }).join(',')
+    ).join('\n');
+
+    return csvContent;
+  } catch (error) {
+    console.error('Error generating export data:', error);
+    throw error;
+  }
+}
+
+// Clear all stored data function
+async function clearAllStoredData() {
+  try {
+    await chrome.storage.local.clear();
+    console.log('All stored data cleared');
+  } catch (error) {
+    console.error('Error clearing stored data:', error);
+    throw error;
+  }
+}
+
+// Schedule daily data cleanup (run once per day)
+chrome.alarms.create('dailyCleanup', { periodInMinutes: 24 * 60 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'dailyCleanup') {
+    cleanupOldData();
+  }
 });
 
 console.log('Mindful Ping background script loaded');
