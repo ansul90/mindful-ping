@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Create Simple PNG Icon</title>
+</head>
+
+<body>
+    <canvas id="canvas" width="48" height="48" style="border: 1px solid #ccc;"></canvas>
+    <br><br>
+    <button onclick="downloadIcon()">Download as PNG</button>
+    <br><br>
+    <textarea id="base64Output" rows="5" cols="60" placeholder="Base64 output will appear here..."></textarea>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Clear canvas with transparent background
+        ctx.clearRect(0, 0, 48, 48);
+
+        // Draw a simple person icon
+        ctx.fillStyle = '#4a90e2';
+        ctx.strokeStyle = '#2c5aa0';
+        ctx.lineWidth = 2;
+
+        // Head (circle)
+        ctx.beginPath();
+        ctx.arc(24, 15, 9, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        // Body (rounded rectangle path)
+        ctx.beginPath();
+        ctx.arc(24, 35, 12, 0, Math.PI); // Semi-circle for shoulders
+        ctx.fill();
+        ctx.stroke();
+
+        // Convert to base64
+        const base64 = canvas.toDataURL('image/png');
+        document.getElementById('base64Output').value = base64;
+
+        function downloadIcon() {
+            const link = document.createElement('a');
+            link.download = 'icon48.png';
+            link.href = base64;
+            link.click();
+        }
+    </script>
+</body>
+
+</html>
